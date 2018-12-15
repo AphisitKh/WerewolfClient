@@ -11,6 +11,10 @@ using EventEnum = WerewolfClient.WerewolfModel.EventEnum;
 using CommandEnum = WerewolfClient.WerewolfCommand.CommandEnum;
 using WerewolfAPI.Model;
 using Role = WerewolfAPI.Model.Role;
+using System.Net;
+using System.Net.Sockets;
+using System.IO;
+using WMPLib;
 
 namespace WerewolfClient
 {
@@ -26,15 +30,34 @@ namespace WerewolfClient
         private string _myRole;
         private bool _isDead;
         private List<Player> players = null;
+		public StreamReader STR;
+		public StreamWriter STW;
+		public string recieve;
+		public string TextToSends;
+		private TcpClient clientChat;
+		WMPLib.WindowsMediaPlayer MediaPlayerBG = new WMPLib.WindowsMediaPlayer();
+		private Form _loginForm;
         public MainForm()
         {
             InitializeComponent();
+			MediaPlayerBG.URL = "A_Revelation.mp3";
+			MediaPlayerBG.controls.play();
+			IPAddress[] localIP = Dns.GetHostAddresses(Dns.GetHostName());
+			foreach (IPAddress address in localIP)
+			{
+				if (address.AddressFamily == AddressFamily.InterNetwork)
+				{
+					ServerIPtextBox.Text = address.ToString();
+				}
+			}
 
             foreach (int i in Enumerable.Range(0, 16))
             {
                 this.Controls["GBPlayers"].Controls["BtnPlayer" + i].Click += new System.EventHandler(this.BtnPlayerX_Click);
                 this.Controls["GBPlayers"].Controls["BtnPlayer" + i].Tag = i;
             }
+			
+			_loginForm = new Login(this);
 
             _updateTimer = new Timer();
             _voteActivated = false;
@@ -44,7 +67,8 @@ namespace WerewolfClient
             EnableButton(BtnVote, false);
             _myRole = null;
             _isDead = false;
-        }
+			EnableButton(BtnNewGame, true);
+		}
 
         private void OnTimerEvent(object sender, EventArgs e)
         {
@@ -162,8 +186,13 @@ namespace WerewolfClient
                         break;
                     case EventEnum.GameStopped:
                         AddChatMessage("Game is finished, outcome is " + wm.EventPayloads["Game.Outcome"]);
+						Win winner = new Win(wm.EventPayloads["Game.Outcome"]);
+						winner.Show();
                         _updateTimer.Enabled = false;
-                        break;
+						EnableButton(BtnAction, false);
+						EnableButton(BtnVote, false);
+						EnableButton(BtnNewGame, true);
+						break;
                     case EventEnum.GameStarted:
                         players = wm.Players;
                         _myRole = wm.EventPayloads["Player.Role.Name"];
@@ -215,11 +244,13 @@ namespace WerewolfClient
                         AddChatMessage( "Switch to day time of day #" + wm.EventPayloads["Game.Current.Day"] + ".");
                         _currentPeriod = Game.PeriodEnum.Day;
                         LBPeriod.Text = "Day time of";
-                        break;
+						SwitchSunMoon.Image = Properties.Resources.sunny;
+						break;
                     case EventEnum.SwitchToNightTime:
                         AddChatMessage( "Switch to night time of day #" + wm.EventPayloads["Game.Current.Day"] + ".");
                         _currentPeriod = Game.PeriodEnum.Night;
                         LBPeriod.Text = "Night time of";
+						SwitchSunMoon.Image = Properties.Resources.moon;
                         break;
                     case EventEnum.UpdateDay:
                         // TODO  catch parse exception here
@@ -267,6 +298,13 @@ namespace WerewolfClient
                             _isDead = false;
                         }
                         break;
+					case EventEnum.SignOut:
+						if (wm.EventPayloads["Success"] == WerewolfModel.TRUE)
+						{
+							this.Visible = false;
+							_loginForm.Visible = true;
+						}
+						break;
                 }
                 // need to reset event
                 wm.Event = EventEnum.NOP;
@@ -337,23 +375,37 @@ namespace WerewolfClient
             }
             if (_actionActivated)
             {
-                _actionActivated = false;
-                BtnAction.BackColor = Button.DefaultBackColor;
-                AddChatMessage("You perform [" + BtnAction.Text + "] on " + players[index].Name);
-                WerewolfCommand wcmd = new WerewolfCommand();
-                wcmd.Action = CommandEnum.Action;
-                wcmd.Payloads = new Dictionary<string, string>() { { "Target", players[index].Id.ToString() } };
-                controller.ActionPerformed(wcmd);
+				try
+				{
+					_actionActivated = false;
+					BtnAction.BackColor = Button.DefaultBackColor;
+					AddChatMessage("You perform [" + BtnAction.Text + "] on " + players[index].Name);
+					WerewolfCommand wcmd = new WerewolfCommand();
+					wcmd.Action = CommandEnum.Action;
+					wcmd.Payloads = new Dictionary<string, string>() { { "Target", players[index].Id.ToString() } };
+					controller.ActionPerformed(wcmd);
+				}
+				catch (Exception error)
+				{
+					MessageBox.Show("not found your target.");
+				}
             }
             if (_voteActivated)
             {
-                _voteActivated = false;
-                BtnVote.BackColor = Button.DefaultBackColor;
-                AddChatMessage("You vote on " + players[index].Name);
-                WerewolfCommand wcmd = new WerewolfCommand();
-                wcmd.Action = CommandEnum.Vote;
-                wcmd.Payloads = new Dictionary<string, string>() { { "Target", players[index].Id.ToString() } };
-                controller.ActionPerformed(wcmd);
+				try
+				{
+					_voteActivated = false;
+					BtnVote.BackColor = Button.DefaultBackColor;
+					AddChatMessage("You vote on " + players[index].Name);
+					WerewolfCommand wcmd = new WerewolfCommand();
+					wcmd.Action = CommandEnum.Vote;
+					wcmd.Payloads = new Dictionary<string, string>() { { "Target", players[index].Id.ToString() } };
+					controller.ActionPerformed(wcmd);
+				}
+				catch (Exception error)
+				{
+					MessageBox.Show("not found your target.");
+				}
             }
         }
 
@@ -361,5 +413,100 @@ namespace WerewolfClient
         {
             Environment.Exit(0);
         }
-    }
+
+		private void backgroundWorker1_DoWork(object sender, DoWorkEventArgs e)
+		{
+			//WerewolfModel wm = new WerewolfModel(); 
+			while (clientChat.Connected)
+			{
+				try
+				{
+					recieve = STR.ReadLine();
+					this.TbChatBox.Invoke(new MethodInvoker(delegate ()
+					{
+						TbChatBox.AppendText("You:" + recieve + "\n");
+					}));
+				}
+				catch(Exception ex)
+				{
+					MessageBox.Show(ex.Message.ToString());
+				}
+			}
+		}
+
+		private void backgroundWorker2_DoWork(object sender, DoWorkEventArgs e)
+		{
+			if (clientChat.Connected)
+			{
+				STW.WriteLine(TextToSends);
+				this.TbChatBox.Invoke(new MethodInvoker(delegate ()
+				{
+					TbChatBox.AppendText("Me:" + TextToSends + "\n");
+				}));
+			}
+			else
+			{
+				MessageBox.Show("Sending failed");
+			}
+			backgroundWorker2.CancelAsync();
+		}
+
+		private void btnSend_Click(object sender, EventArgs e)
+		{
+			if (textBox2.Text != "")
+			{
+				TextToSends = textBox2.Text;
+				backgroundWorker2.RunWorkerAsync();
+			}
+			textBox2.Text = "";
+		}
+
+		private void StartChat_Click(object sender, EventArgs e)
+		{
+			TcpListener listener = new TcpListener(IPAddress.Any, 1);
+			listener.Start();
+			clientChat = listener.AcceptTcpClient();
+			STR = new StreamReader(clientChat.GetStream());
+			STW = new StreamWriter(clientChat.GetStream());
+			STW.AutoFlush = true;
+			backgroundWorker1.RunWorkerAsync();
+			backgroundWorker2.WorkerSupportsCancellation = true;
+		}
+
+		private void bntConnectChat_Click(object sender, EventArgs e)
+		{
+			clientChat = new TcpClient();
+			IPEndPoint IpEnd = new IPEndPoint(IPAddress.Parse(ServerIPtextBox.Text), 1);
+			try
+			{
+				clientChat.Connect(IpEnd);
+				if (clientChat.Connected)
+				{
+					TbChatBox.AppendText("Connected to server" + "\n");
+					STR = new StreamReader(clientChat.GetStream());
+					STW = new StreamWriter(clientChat.GetStream());
+					STW.AutoFlush = true;
+					backgroundWorker1.RunWorkerAsync();
+					backgroundWorker2.WorkerSupportsCancellation = true;
+				}
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show(ex.Message.ToString());
+			}
+		}
+
+		public void addform(Form login)
+		{
+			_loginForm = login;
+		}
+		private void BtnNewGame_Click(object sender, EventArgs e)
+		{
+			Login login = (Login)_loginForm;
+			WerewolfCommand wcmd = new WerewolfCommand();
+			wcmd.Action = WerewolfCommand.CommandEnum.SignOut;
+			wcmd.Payloads = new Dictionary<string, string>() { { "Server", "http://localhost:2343/werewolf/" } };
+			controller.ActionPerformed(wcmd);
+		}
+	}
 }

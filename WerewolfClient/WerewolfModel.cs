@@ -53,6 +53,7 @@ namespace WerewolfClient
             YouShotDead = 13,
             OtherShotDead = 14,
             Alive = 15,
+			SignOut = 16,
         }
         public const string ROLE_SEER = "Seer";
         public const string ROLE_AURA_SEER = "Aura Seer";
@@ -343,7 +344,7 @@ namespace WerewolfClient
                 _player = playerEP.AddPlayer(p);
                 
                 Console.WriteLine(_player.Id);
-                _event = EventEnum.SignIn;
+                _event = EventEnum.SignUp;
                 _eventPayloads["Success"] = TRUE;
             } catch (Exception ex)
             {
@@ -355,6 +356,25 @@ namespace WerewolfClient
             NotifyAll();
         }
 
+		public void SignOut(string server)
+		{
+			try
+			{
+				InitilizeModel(server);
+				List<Player> p = _playerEP.LogoutPlayer(_player.Session);
+				Console.WriteLine(_player.Id);
+				_event = EventEnum.SignOut;
+				_eventPayloads["Success"] = TRUE;
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine(ex.ToString());
+				_event = EventEnum.SignOut;
+				_eventPayloads["Success"] = FALSE;
+				_eventPayloads["Error"] = ex.ToString();
+			}
+			NotifyAll();
+		}
         public void Vote(string target)
         {
             try
