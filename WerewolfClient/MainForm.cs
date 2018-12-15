@@ -197,6 +197,8 @@ namespace WerewolfClient
                         players = wm.Players;
                         _myRole = wm.EventPayloads["Player.Role.Name"];
                         AddChatMessage( "Your role is " + _myRole + ".");
+						myRole isMyRole = new myRole(_myRole);
+						isMyRole.Show();
                         _currentPeriod = Game.PeriodEnum.Night;
                         EnableButton(BtnAction, true);
                         switch(_myRole)

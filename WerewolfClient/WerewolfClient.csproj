@@ -47,6 +47,12 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Controller.cs" />
+    <Compile Include="myRole.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="myRole.Designer.cs">
+      <DependentUpon>myRole.cs</DependentUpon>
+    </Compile>
     <Compile Include="Win.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -76,6 +82,9 @@
     <Compile Include="View.cs" />
     <Compile Include="WerewolfController.cs" />
     <Compile Include="WerewolfModel.cs" />
+    <EmbeddedResource Include="myRole.resx">
+      <DependentUpon>myRole.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="Win.resx">
       <DependentUpon>Win.cs</DependentUpon>
     </EmbeddedResource>
